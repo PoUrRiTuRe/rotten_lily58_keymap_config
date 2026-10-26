@@ -35,7 +35,8 @@ struct status_state {
     int64_t last_press;
 #else
     bool connected;
-    uint16_t cube_angle;
+    uint16_t cube_angle_y;
+    uint16_t cube_angle_x;
 #endif
 };
 

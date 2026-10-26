@@ -26,10 +26,14 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include "peripheral_status.h"
 
-/* Cube animation: one frame every CUBE_FRAME_MS, CUBE_STEP tenths of a degree
- * per frame (one turn about every 7 s) */
+/* Cube animation: one frame every CUBE_FRAME_MS; per frame it turns CUBE_STEP_Y
+ * hundredths of a degree around Y (one turn every 7.2 s) and CUBE_STEP_X around
+ * X (one turn every 14.4 s). Each angle wraps after a full turn, so the motion
+ * never jumps, and the whole tumble repeats every 14.4 s. */
 #define CUBE_FRAME_MS 50
-#define CUBE_STEP 25
+#define CUBE_STEP_Y 250
+#define CUBE_STEP_X 125
+#define CUBE_TILT_X 2860 /* starting X angle: the cube starts tilted */
 /* The cube canvas sits 37 px from the bottom of the screen: centered in the
  * space under the battery / link row (it covers the empty lower part of the
  * status canvas) */
@@ -68,7 +72,7 @@ static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
     rotate_canvas(canvas, cbuf);
 }
 
-// Wireframe cube, turned by state.cube_angle (tenths of a degree)
+// Wireframe cube, turned by state.cube_angle_y / cube_angle_x (hundredths of a degree)
 static void draw_cube(struct zmk_widget_status *widget) {
     lv_obj_t *canvas = widget->cube;
 
@@ -77,8 +81,8 @@ static void draw_cube(struct zmk_widget_status *widget) {
     lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_dsc);
 
     // Turn around Y, then around X at a different speed: the cube tumbles
-    float a = widget->state.cube_angle * 3.14159265f / 1800.0f;
-    float b = a * 0.6f + 0.5f;
+    float a = widget->state.cube_angle_y * 3.14159265f / 18000.0f;
+    float b = widget->state.cube_angle_x * 3.14159265f / 18000.0f;
     float sa = sinf(a), ca = cosf(a), sb = sinf(b), cb = cosf(b);
 
     lv_point_t points[8];
@@ -107,7 +111,8 @@ static void draw_cube(struct zmk_widget_status *widget) {
 
 static void cube_timer_cb(lv_timer_t *timer) {
     struct zmk_widget_status *widget = timer->user_data;
-    widget->state.cube_angle = (widget->state.cube_angle + CUBE_STEP) % 3600;
+    widget->state.cube_angle_y = (widget->state.cube_angle_y + CUBE_STEP_Y) % 36000;
+    widget->state.cube_angle_x = (widget->state.cube_angle_x + CUBE_STEP_X) % 36000;
     draw_cube(widget);
 }
 
@@ -182,7 +187,8 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget_battery_status_init();
     widget_peripheral_status_init();
 
-    widget->state.cube_angle = 0;
+    widget->state.cube_angle_y = 0;
+    widget->state.cube_angle_x = CUBE_TILT_X;
     draw_cube(widget);
     lv_timer_create(cube_timer_cb, CUBE_FRAME_MS, widget);
 
