@@ -1,0 +1,5 @@
+name: rotten-lily58
+build:
+  cmake: .
+  settings:
+    board_root: .
