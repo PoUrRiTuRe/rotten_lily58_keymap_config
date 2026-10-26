@@ -1,8 +1,8 @@
 /*
  *
  * Based on ZMK's nice_view shield (peripheral screen): the battery and link
- * status are unchanged, the balloon / mountain art is replaced by a black
- * panel with a spinning wireframe cube.
+ * status are unchanged, the balloon / mountain art is replaced by a spinning
+ * wireframe cube (light lines on the dark screen, like the stock texts).
  * Copyright (c) 2023 The ZMK Contributors
  * SPDX-License-Identifier: MIT
  *
@@ -30,7 +30,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
  * per frame (one turn about every 7 s) */
 #define CUBE_FRAME_MS 50
 #define CUBE_STEP 25
-#define CUBE_PANEL 92 /* height of the black panel under the status canvas */
+#define CUBE_AREA 92 /* screen height under the status canvas */
 
 static const int8_t cube_vertices[8][3] = {{-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1},
                                            {-1, -1, 1},  {1, -1, 1},  {1, 1, 1},  {-1, 1, 1}};
@@ -65,12 +65,12 @@ static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
     rotate_canvas(canvas, cbuf);
 }
 
-// Wireframe cube, light lines on black, turned by state.cube_angle (tenths of a degree)
+// Wireframe cube, turned by state.cube_angle (tenths of a degree)
 static void draw_cube(struct zmk_widget_status *widget) {
     lv_obj_t *canvas = widget->cube;
 
     lv_draw_rect_dsc_t rect_dsc;
-    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
+    init_rect_dsc(&rect_dsc, LVGL_BACKGROUND);
     lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_dsc);
 
     // Turn around Y, then around X at a different speed: the cube tumbles
@@ -85,13 +85,13 @@ static void draw_cube(struct zmk_widget_status *widget) {
         float z1 = -x * sa + z * ca;
         float y2 = y * cb - z1 * sb;
         float z2 = y * sb + z1 * cb;
-        float f = 48.0f / (z2 + 4.0f); // perspective
+        float f = 44.0f / (z2 + 4.0f); // perspective, keeps every corner inside the canvas
         points[i].x = CANVAS_SIZE / 2 + (lv_coord_t)lroundf(x1 * f);
         points[i].y = CANVAS_SIZE / 2 + (lv_coord_t)lroundf(y2 * f);
     }
 
     lv_draw_line_dsc_t line_dsc;
-    init_line_dsc(&line_dsc, LVGL_BACKGROUND, 1);
+    init_line_dsc(&line_dsc, LVGL_FOREGROUND, 1);
     for (int i = 0; i < 12; i++) {
         lv_point_t edge[2] = {points[cube_edges[i][0]], points[cube_edges[i][1]]};
         lv_canvas_draw_line(canvas, edge, 2, &line_dsc);
@@ -166,17 +166,9 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_obj_align(top, LV_ALIGN_TOP_RIGHT, 0, 0);
     lv_canvas_set_buffer(top, widget->cbuf, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
 
-    // Black panel under the status canvas, with the cube canvas centered on it
-    lv_obj_t *panel = lv_obj_create(widget->obj);
-    lv_obj_set_size(panel, CUBE_PANEL, CANVAS_SIZE);
-    lv_obj_align(panel, LV_ALIGN_TOP_LEFT, 0, 0);
-    lv_obj_set_style_bg_color(panel, LVGL_FOREGROUND, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(panel, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(panel, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(panel, 0, LV_PART_MAIN);
+    // Cube canvas centered in the area under the status canvas
     widget->cube = lv_canvas_create(widget->obj);
-    lv_obj_align(widget->cube, LV_ALIGN_TOP_LEFT, (CUBE_PANEL - CANVAS_SIZE) / 2, 0);
+    lv_obj_align(widget->cube, LV_ALIGN_TOP_LEFT, (CUBE_AREA - CANVAS_SIZE) / 2, 0);
     lv_canvas_set_buffer(widget->cube, widget->cbuf2, CANVAS_SIZE, CANVAS_SIZE,
                          LV_IMG_CF_TRUE_COLOR);
 
