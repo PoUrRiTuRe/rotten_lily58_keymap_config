@@ -1,8 +1,14 @@
 /*
  *
  * Based on ZMK's nice_view shield (peripheral screen): the battery and link
- * status are unchanged, the balloon / mountain art is replaced by a spinning
- * wireframe cube (light lines on the dark screen, like the stock texts).
+ * status are unchanged, the balloon / mountain art is replaced by the Arch
+ * Linux logo, a spinning wireframe cube and an atom symbol in a ring (light on
+ * the dark screen, like the stock texts).
+ *
+ * Layout from the top of the screen, with the same gap (about 8 px) between
+ * every item: battery / link row (status canvas), Arch logo (status canvas,
+ * rows 26-53), cube (cube canvas, center on row 90, at most 58 px tall for
+ * any rotation), atom (bottom canvas, rows 126-151), bottom of the screen.
  * Copyright (c) 2023 The ZMK Contributors
  * SPDX-License-Identifier: MIT
  *
@@ -26,6 +32,9 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include "peripheral_status.h"
 
+LV_IMG_DECLARE(arch_logo);
+LV_IMG_DECLARE(atom_logo);
+
 /* Cube animation: one frame every CUBE_FRAME_MS; per frame it turns CUBE_STEP_Y
  * hundredths of a degree around Y (one turn every 7.2 s) and CUBE_STEP_X around
  * X (one turn every 14.4 s). Each angle wraps after a full turn, so the motion
@@ -34,10 +43,15 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #define CUBE_STEP_Y 250
 #define CUBE_STEP_X 125
 #define CUBE_TILT_X 2860 /* starting X angle: the cube starts tilted */
-/* The cube canvas sits 37 px from the bottom of the screen: centered in the
- * space under the battery / link row (it covers the empty lower part of the
- * status canvas) */
-#define CUBE_X 37
+/* Canvases are placed by their distance from the bottom of the screen: the
+ * cube canvas covers rows 56-123 (center on row 90), the bottom canvas rows
+ * 92-159; logos are placed inside their canvas */
+#define CUBE_X 36
+#define CUBE_SCALE 78.0f /* max sqrt(3 - z^2) / (z + 5) = 0.37, times 78 = 28.8 px */
+#define ARCH_X 20
+#define ARCH_Y 26
+#define ATOM_X 21
+#define ATOM_Y 34 /* row 126 of the screen */
 
 static const int8_t cube_vertices[8][3] = {{-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1},
                                            {-1, -1, 1},  {1, -1, 1},  {1, 1, 1},  {-1, 1, 1}};
@@ -68,6 +82,11 @@ static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
     lv_canvas_draw_text(canvas, 0, 0, CANVAS_SIZE, &label_dsc,
                         state->connected ? LV_SYMBOL_WIFI : LV_SYMBOL_CLOSE);
 
+    // Draw the Arch logo under the battery / link row
+    lv_draw_img_dsc_t img_dsc;
+    lv_draw_img_dsc_init(&img_dsc);
+    lv_canvas_draw_img(canvas, ARCH_X, ARCH_Y, &arch_logo, &img_dsc);
+
     // Rotate canvas
     rotate_canvas(canvas, cbuf);
 }
@@ -92,9 +111,8 @@ static void draw_cube(struct zmk_widget_status *widget) {
         float z1 = -x * sa + z * ca;
         float y2 = y * cb - z1 * sb;
         float z2 = y * sb + z1 * cb;
-        // Perspective: as big as possible while every corner stays inside the
-        // canvas (max sqrt(3 - z^2) / (z + 5) = 0.37, times 88 = 32.5 px)
-        float f = 88.0f / (z2 + 5.0f);
+        // Perspective, sized so the cube keeps the same gap to both logos
+        float f = CUBE_SCALE / (z2 + 5.0f);
         points[i].x = CANVAS_SIZE / 2 + (lv_coord_t)lroundf(x1 * f);
         points[i].y = CANVAS_SIZE / 2 + (lv_coord_t)lroundf(y2 * f);
     }
@@ -107,6 +125,21 @@ static void draw_cube(struct zmk_widget_status *widget) {
     }
 
     rotate_canvas(canvas, widget->cbuf2);
+}
+
+// Atom in a ring at the bottom of the screen (drawn once)
+static void draw_bottom(struct zmk_widget_status *widget) {
+    lv_obj_t *canvas = widget->bottom;
+
+    lv_draw_rect_dsc_t rect_dsc;
+    init_rect_dsc(&rect_dsc, LVGL_BACKGROUND);
+    lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_dsc);
+
+    lv_draw_img_dsc_t img_dsc;
+    lv_draw_img_dsc_init(&img_dsc);
+    lv_canvas_draw_img(canvas, ATOM_X, ATOM_Y, &atom_logo, &img_dsc);
+
+    rotate_canvas(canvas, widget->cbuf3);
 }
 
 static void cube_timer_cb(lv_timer_t *timer) {
@@ -176,8 +209,12 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_obj_align(top, LV_ALIGN_TOP_RIGHT, 0, 0);
     lv_canvas_set_buffer(top, widget->cbuf, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
 
-    // Cube canvas, created last so it is drawn over the empty part of the
-    // status canvas
+    // Bottom canvas (atom), then the cube canvas, created last so it is drawn
+    // over the empty parts of the two others
+    widget->bottom = lv_canvas_create(widget->obj);
+    lv_obj_align(widget->bottom, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_canvas_set_buffer(widget->bottom, widget->cbuf3, CANVAS_SIZE, CANVAS_SIZE,
+                         LV_IMG_CF_TRUE_COLOR);
     widget->cube = lv_canvas_create(widget->obj);
     lv_obj_align(widget->cube, LV_ALIGN_TOP_LEFT, CUBE_X, 0);
     lv_canvas_set_buffer(widget->cube, widget->cbuf2, CANVAS_SIZE, CANVAS_SIZE,
@@ -189,6 +226,7 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
 
     widget->state.cube_angle_y = 0;
     widget->state.cube_angle_x = CUBE_TILT_X;
+    draw_bottom(widget);
     draw_cube(widget);
     lv_timer_create(cube_timer_cb, CUBE_FRAME_MS, widget);
 
