@@ -356,7 +356,7 @@ static void bongo_tap_done(struct zmk_widget_status *widget) {
     draw_top(widget->obj, widget->cbuf, s);
 }
 
-static void bongo_tap(struct zmk_widget_status *widget, uint8_t side) {
+static void bongo_start_tap(struct zmk_widget_status *widget, uint8_t side) {
     struct status_state *s = &widget->state;
     s->bongo_mode = BONGO_TAP;
     s->bongo_frame = side;
@@ -391,7 +391,7 @@ static void set_bongo_status(struct zmk_widget_status *widget, struct bongo_stat
         draw_top(widget->obj, widget->cbuf, s);
         return;
     }
-    bongo_tap(widget, state.last_side);
+    bongo_start_tap(widget, state.last_side);
 }
 
 static void bongo_status_update_cb(struct bongo_status_state state) {
@@ -426,7 +426,7 @@ static void bongo_anim_timer_cb(lv_timer_t *timer) {
     struct zmk_widget_status *widget = timer->user_data;
     lv_timer_pause(timer);
     if (widget->state.bongo_mode == BONGO_LIFT) {
-        bongo_tap(widget, widget->state.bongo_frame);
+        bongo_start_tap(widget, widget->state.bongo_frame);
     } else if (widget->state.bongo_mode == BONGO_TAP && !widget->state.bongo_tap_done) {
         bongo_tap_done(widget);
     }
