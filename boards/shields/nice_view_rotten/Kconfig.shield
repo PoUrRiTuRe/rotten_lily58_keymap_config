@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT
+
+config SHIELD_NICE_VIEW_ROTTEN
+    def_bool $(shields_list_contains,nice_view_rotten)
