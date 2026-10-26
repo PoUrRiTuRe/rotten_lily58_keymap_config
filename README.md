@@ -8,15 +8,15 @@ latest run and flash each `.uf2` (double-tap reset → copy onto the USB drive).
 
 | Half | Top of the screen | Bottom of the screen |
 |---|---|---|
-| Left (central) | battery, output, **bongo cat** instead of the WPM graph: left paw for keys of the left half, right paw for the right half, landing a bit lower for the two bottom rows and the thumbs; paws up when typing stops, then idle animation | Bluetooth profiles, layer name (unchanged) |
+| Left (central) | battery, output, **bongo cat** instead of the WPM graph: mirrored like facing you (left half = paw on the right of the screen), reaching further from its body for the two top rows, lifting its paw for a moment between two presses; paws up when typing stops, then idle animation | Bluetooth profiles, layer name (unchanged) |
 | Right (peripheral) | battery, link (unchanged) | **spinning wireframe cube** (light lines on the dark screen) |
 
 - Shield files: `boards/shields/nice_view_rotten/`; code: `src/nice_view_rotten/`
   (based on ZMK's stock `nice_view` shield, MIT).
 - Bongo cat frames: the classic QMK OLED bongo cat by ObliviousGmn (as used in
   riiadesign/lily58-kiumi), cropped to 68x32 in `tools/bongo_frames.txt`
-  (`#` = pixel). `tools/sprites.py` names the tap frames by paw and adds the
-  lower-paw copies; after editing: `python3 tools/sprites.py src/nice_view_rotten/sprites.c`.
+  (`#` = pixel). `tools/sprites.py` removes the cartoon impact marks of the tap frames and
+  adds the far-reaching paw copies; after editing: `python3 tools/sprites.py src/nice_view_rotten/sprites.c`.
 - Preview GIF (approximate, not the real display): `python3 tools/preview.py preview.gif`.
 - Cube speed and size: `CUBE_FRAME_MS`, `CUBE_STEP_Y` / `CUBE_STEP_X` and the perspective factor in
   `src/nice_view_rotten/peripheral_status.c`. The animations stop when the screen

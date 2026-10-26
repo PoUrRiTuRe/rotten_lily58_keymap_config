@@ -5,10 +5,11 @@ Lit pixels use the foreground color, which the nice!view shows light on its
 dark background (like the stock texts): the cat looks like the classic OLED
 one, light body with dark eyes and mouth.
 
-The tap frames of the file are renamed by paw (tap1 = left paw down,
-tap0 = right paw down) and each gets a "low" copy whose paw lands LOW_SHIFT
-pixels lower (keys of the two bottom rows and the thumbs). Every frame is
-padded to HEIGHT rows so the low paw fits.
+The tap frames of the file are cleaned of their cartoon impact marks and
+renamed by the side of the screen their paw is on (tap1 = paw on the left of
+the screen, tap0 = paw on the right). Each also gets a "far" copy whose paw
+reaches FAR_REACH pixels further from the body (keys of the two top rows).
+Every frame is padded to HEIGHT rows.
 
 Usage: python3 tools/sprites.py src/nice_view_rotten/sprites.c
 """
@@ -31,29 +32,42 @@ def load_frames():
 
 
 HEIGHT = 34
-LOW_SHIFT = 2
-# Box (x0, x1, y0, y1) of the paw that is down in each tap frame
-PAWS = {"tap1": ("tap_left", (16, 25, 27, 31)), "tap0": ("tap_right", (57, 67, 19, 27))}
+# Per tap frame: new name, boxes (x0, x1, y0, y1) of the impact marks to
+# erase, box of the paw that is down and the direction it reaches out to
+TAPS = {
+    "tap1": ("tap_left", [(16, 25, 27, 31), (30, 36, 30, 31)], (14, 33, 18, 27), (-1, 1)),
+    "tap0": ("tap_right", [(53, 59, 2, 10), (58, 66, 6, 13), (56, 67, 17, 27)], (44, 57, 10, 18), (1, 1)),
+}
+FAR_REACH = 3
 
 
 def pad(rows):
     return rows + ["." * len(rows[0])] * (HEIGHT - len(rows))
 
 
-def lower_paw(rows, box):
-    """Move the paw in box LOW_SHIFT rows down, stretching its top row (the
-    wrist) so it stays attached to the arm."""
-    x0, x1, y0, y1 = box
+def erase(rows, boxes):
     grid = [list(r) for r in rows]
-    paw = [r[x0:x1 + 1] for r in rows[y0:y1 + 1]]
-    for y in range(y0, y1 + 1):
-        grid[y][x0:x1 + 1] = "." * (x1 - x0 + 1)
-    stretched = [paw[0]] * LOW_SHIFT + paw
-    for i, part in enumerate(stretched):
-        y = y0 + i
-        for j, c in enumerate(part):
-            if c == "#":
-                grid[y][x0 + j] = "#"
+    for x0, x1, y0, y1 in boxes:
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                grid[y][x] = "."
+    return ["".join(r) for r in grid]
+
+
+def reach(rows, box, direction):
+    """Smear the paw in box FAR_REACH pixels along direction: the arm gets
+    longer and the paw lands further from the body."""
+    x0, x1, y0, y1 = box
+    dx, dy = direction
+    grid = [list(r) for r in rows]
+    h, w = len(grid), len(grid[0])
+    for step in range(1, FAR_REACH + 1):
+        for y in range(y0, y1 + 1):
+            for x in range(x0, x1 + 1):
+                if rows[y][x] == "#":
+                    nx, ny = x + dx * step, y + dy * step
+                    if 0 <= nx < w and 0 <= ny < h:
+                        grid[ny][nx] = "#"
     return ["".join(r) for r in grid]
 
 
@@ -61,10 +75,11 @@ def build_frames():
     frames = {}
     for name, rows in load_frames().items():
         rows = pad(rows)
-        if name in PAWS:
-            new_name, box = PAWS[name]
+        if name in TAPS:
+            new_name, marks, paw, direction = TAPS[name]
+            rows = erase(rows, marks)
             frames[new_name] = rows
-            frames[new_name + "_low"] = lower_paw(rows, box)
+            frames[new_name + "_far"] = reach(rows, paw, direction)
         else:
             frames[name] = rows
     return frames

@@ -72,11 +72,12 @@ def right_screen(ay, ax):
 
 # Demo: (sprite, duration in ms, caption)
 DEMO = [("idle%d" % (i % 5), 200, "idle") for i in range(10)]
-for side in ("left", "right"):
-    for low in (False, True):
+for half, paw in (("left", "right"), ("right", "left")):     # mirror
+    for top in (True, False):
+        cap = f"{half} half · {'top rows' if top else 'bottom rows'}"
+        sprite = "tap_%s%s" % (paw, "_far" if top else "")
         for _ in range(4):
-            DEMO += [("tap_%s%s" % (side, "_low" if low else ""), 150,
-                      f"{side} half · {'bottom rows' if low else 'top rows'}"), ("prep0", 150, "")]
+            DEMO += [(sprite, 150, cap), ("prep0", 50, cap)]   # lift between presses
 DEMO += [("prep0", 900, "paws up"), ("idle0", 200, "idle")]
 
 frames, ay, ax = [], 0, 2860
