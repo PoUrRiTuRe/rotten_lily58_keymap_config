@@ -1,5 +1,9 @@
-"""Turn tools/bongo_frames.txt (68x32 frames, '#' = ink) into the LVGL
-indexed-1bit images of src/nice_view_rotten/sprites.c.
+"""Turn tools/bongo_frames.txt (68x32 frames, '#' = lit OLED pixel) into the
+LVGL indexed-1bit images of src/nice_view_rotten/sprites.c.
+
+The OLED frames are a white cat on black. On the nice!view (dark ink on a
+light screen) the cat is drawn the classic way instead: light body, dark
+outline, dark eyes and mouth.
 
 Usage: python3 tools/sprites.py src/nice_view_rotten/sprites.c
 """
@@ -21,7 +25,35 @@ def load_frames():
     return frames
 
 
+def outline(rows):
+    """Lit pixels next to an unlit one become ink, and so do the unlit holes
+    inside the cat (eyes, mouth); the rest of the body stays light."""
+    h, w = len(rows), len(rows[0])
+    lit = [[c == "#" for c in r] for r in rows]
+    outside = set()
+    todo = [(x, y) for x in range(w) for y in (0, h - 1)] + [(x, y) for y in range(h) for x in (0, w - 1)]
+    while todo:
+        x, y = todo.pop()
+        if not (0 <= x < w and 0 <= y < h) or (x, y) in outside or lit[y][x]:
+            continue
+        outside.add((x, y))
+        todo += [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
+    out = []
+    for y in range(h):
+        row = ""
+        for x in range(w):
+            if lit[y][x]:
+                edge = any(not (0 <= x + dx < w and 0 <= y + dy < h) or (x + dx, y + dy) in outside
+                           for dx in (-1, 0, 1) for dy in (-1, 0, 1))
+                row += "#" if edge else "."
+            else:
+                row += "." if (x, y) in outside else "#"
+        out.append(row)
+    return out
+
+
 def to_c(name, rows):
+    rows = outline(rows)
     w, h = len(rows[0]), len(rows)
     stride = (w + 7) // 8
     data = []
