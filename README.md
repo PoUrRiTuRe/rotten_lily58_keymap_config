@@ -9,7 +9,7 @@ latest run and flash each `.uf2` (double-tap reset → copy onto the USB drive).
 | Half | Top of the screen | Bottom of the screen |
 |---|---|---|
 | Left (central) | battery, output, **bongo cat** instead of the WPM graph (taps on every key press, paws up when typing stops, then idle animation) | Bluetooth profiles, layer name (unchanged) |
-| Right (peripheral) | battery, link (unchanged) | black panel with a **spinning wireframe cube** |
+| Right (peripheral) | battery, link (unchanged) | **spinning wireframe cube** (light lines on the dark screen) |
 
 - Shield files: `boards/shields/nice_view_rotten/`; code: `src/nice_view_rotten/`
   (based on ZMK's stock `nice_view` shield, MIT).
