@@ -30,7 +30,10 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
  * per frame (one turn about every 7 s) */
 #define CUBE_FRAME_MS 50
 #define CUBE_STEP 25
-#define CUBE_AREA 92 /* screen height under the status canvas */
+/* The cube canvas sits 37 px from the bottom of the screen: centered in the
+ * space under the battery / link row (it covers the empty lower part of the
+ * status canvas) */
+#define CUBE_X 37
 
 static const int8_t cube_vertices[8][3] = {{-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1},
                                            {-1, -1, 1},  {1, -1, 1},  {1, 1, 1},  {-1, 1, 1}};
@@ -85,7 +88,9 @@ static void draw_cube(struct zmk_widget_status *widget) {
         float z1 = -x * sa + z * ca;
         float y2 = y * cb - z1 * sb;
         float z2 = y * sb + z1 * cb;
-        float f = 44.0f / (z2 + 4.0f); // perspective, keeps every corner inside the canvas
+        // Perspective: as big as possible while every corner stays inside the
+        // canvas (max sqrt(3 - z^2) / (z + 5) = 0.37, times 88 = 32.5 px)
+        float f = 88.0f / (z2 + 5.0f);
         points[i].x = CANVAS_SIZE / 2 + (lv_coord_t)lroundf(x1 * f);
         points[i].y = CANVAS_SIZE / 2 + (lv_coord_t)lroundf(y2 * f);
     }
@@ -166,9 +171,10 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_obj_align(top, LV_ALIGN_TOP_RIGHT, 0, 0);
     lv_canvas_set_buffer(top, widget->cbuf, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
 
-    // Cube canvas centered in the area under the status canvas
+    // Cube canvas, created last so it is drawn over the empty part of the
+    // status canvas
     widget->cube = lv_canvas_create(widget->obj);
-    lv_obj_align(widget->cube, LV_ALIGN_TOP_LEFT, (CUBE_AREA - CANVAS_SIZE) / 2, 0);
+    lv_obj_align(widget->cube, LV_ALIGN_TOP_LEFT, CUBE_X, 0);
     lv_canvas_set_buffer(widget->cube, widget->cbuf2, CANVAS_SIZE, CANVAS_SIZE,
                          LV_IMG_CF_TRUE_COLOR);
 
