@@ -70,43 +70,69 @@ def right_screen(ay, ax):
     return im
 
 
-# Demo: typing "discussion", simulated with the firmware's timings
-TAP_MS, LIFT_MS, IDLE_MS, FRAME_MS = 120, 80, 1500, 200
+# Demo: typing "discussion", then holding Ctrl, simulated with the firmware's
+# timings (same rules as status.c)
+TAP_MS, LIFT_MS, IDLE_MS, FRAME_MS = 100, 40, 1500, 200
 HALF = {c: "left" for c in "qwertasdfgzxcvb"}
 HALF.update({c: "right" for c in "yuiophjklnm"})
+HALF["Ctrl"] = "left"
 WORD = "discussion"
-presses, t = [], 1000
+events, t = [], 1000   # (time, key, pressed)
 for i, c in enumerate(WORD):
-    presses.append((t, c))
-    t += 100 if i + 1 < len(WORD) and WORD[i + 1] == c else 260   # double letters typed fast
+    events += [(t, c, True), (t + 60, c, False)]
+    t += 100 if i + 1 < len(WORD) and WORD[i + 1] == c else 180   # double letters typed fast
+t += 600
+events += [(t, "Ctrl", True), (t + 1500, "Ctrl", False)]
+events.sort()
 
 
 def simulate(total_ms):
-    """Same state machine as status.c, sampled every MS."""
-    mode, frame, last, anim_end, idle_tick = "idle", 0, -10**9, None, 0
-    out, queue = [], list(presses)
-    for now in range(0, total_ms, MS):
+    side_of = lambda k: 1 if HALF[k] == "left" else 0   # mirror: left half = screen-right paw
+    mode, frame, held, last, until, timer = "idle", 0, [0, 0], -10**9, 0, None
+    out, queue, cap = [], list(events), "idle"
+
+    def release(now):
+        nonlocal mode, frame, timer, last
+        if held[frame]:
+            return
+        if held[1 - frame]:
+            frame = 1 - frame
+        elif until > now:
+            timer = until
+        else:
+            mode, last = "prep", now
+
+    for now in range(0, total_ms, 10):
         while queue and queue[0][0] <= now:
-            _, c = queue.pop(0)
-            frame = "tap_right" if HALF[c] == "left" else "tap_left"   # mirror
-            last = now
-            if mode == "tap":
-                mode, anim_end = "lift", now + LIFT_MS
-            elif mode != "lift":
-                mode, anim_end = "tap", now + TAP_MS
-            cap = f"'{c}' ({HALF[c]} half)"
-        if anim_end is not None and now >= anim_end:
+            _, k, down = queue.pop(0)
+            side = side_of(k)
+            if down:
+                held[side] += 1
+                last, until = now, now + TAP_MS
+                cap = f"{k} ({HALF[k]} half)"
+                if mode in ("tap", "lift") and frame == side:
+                    mode, until, timer = "lift", until + LIFT_MS, now + LIFT_MS
+                else:
+                    mode, timer = "tap", None
+                frame = side
+            else:
+                held[side] = max(0, held[side] - 1)
+                if mode == "tap":
+                    release(now)
+        if timer is not None and now >= timer:
+            timer = None
             if mode == "lift":
-                mode, anim_end = "tap", now + TAP_MS
+                mode = "tap"
+                if not held[frame]:
+                    timer = now + TAP_MS
             elif mode == "tap":
-                mode, anim_end = "prep", None
-        if now - idle_tick >= FRAME_MS:
-            idle_tick = now
-            if mode == "prep" and now - last >= IDLE_MS:
-                mode, idle_frame = "idle", 0
-        sprite = frame if mode == "tap" else ("prep0" if mode in ("prep", "lift") else "idle%d" % (now // FRAME_MS % 5))
-        typed = WORD[:sum(1 for p, _ in presses if p <= now)]
-        out.append((sprite, f'typing "{typed}"' if typed and mode != "idle" else "idle"))
+                release(now)
+        if mode == "prep" and not any(held) and now - last >= IDLE_MS:
+            mode, cap = "idle", "idle"
+        if now % MS == 0:
+            sprite = ("tap_left", "tap_right")[frame] if mode == "tap" else (
+                "prep0" if mode in ("prep", "lift") else "idle%d" % (now // FRAME_MS % 5))
+            out.append((sprite, cap if mode != "idle" else "idle"))
     return out
 
 

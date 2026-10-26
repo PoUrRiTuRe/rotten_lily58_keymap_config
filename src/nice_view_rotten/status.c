@@ -3,9 +3,10 @@
  * Based on ZMK's nice_view shield (central screen): the WPM graph is
  * replaced by the classic bongo cat: it taps the table on every key press
  * with the paw on the matching side as in a mirror (left half of the keyboard
- * = paw on the right of the screen, the cat's left paw). Every press is one
- * visible tap followed by the paws-ready pose, so a double letter shows two
- * taps. It goes back to its idle animation when typing stops.
+ * = paw on the right of the screen, the cat's left paw). The paw goes down
+ * as soon as a key is pressed and stays down while it is held; a second
+ * press on the same side lifts it for a moment first, so a double letter
+ * shows two taps. It goes back to its idle animation when typing stops.
  * Copyright (c) 2025 The ZMK Contributors
  * SPDX-License-Identifier: MIT
  *
@@ -48,8 +49,8 @@ static const lv_img_dsc_t *const bongo_tap[] = {&bongo_tap_left, &bongo_tap_righ
 #define BONGO_SCREEN_RIGHT 1
 
 #define BONGO_FRAME_MS 200 /* idle animation speed */
-#define BONGO_TAP_MS 120   /* paw down this long, then the paws-ready pose */
-#define BONGO_LIFT_MS 80   /* paws-ready pose shown before a press made during a tap */
+#define BONGO_TAP_MS 100   /* paw down at least this long, even for a very short press */
+#define BONGO_LIFT_MS 40   /* paws-ready pose before a new tap with the paw already down */
 #define BONGO_IDLE_MS 1500 /* back to the idle animation this long after the last press */
 
 enum bongo_mode { BONGO_IDLE, BONGO_PREP, BONGO_LIFT, BONGO_TAP };
@@ -72,7 +73,8 @@ struct layer_status_state {
 
 struct bongo_status_state {
     uint32_t key_presses;
-    uint32_t position;
+    uint8_t last_side;   /* screen side of the paw of the last pressed key */
+    uint8_t held[2];     /* keys held down, per screen side */
 };
 
 /* Lily58 key positions (keymap order): rows 0-2 have 6 + 6 keys, row 3 has
@@ -340,23 +342,65 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_layer_status, struct layer_status_state, laye
 
 ZMK_SUBSCRIPTION(widget_layer_status, zmk_layer_state_changed);
 
-static void set_bongo_status(struct zmk_widget_status *widget, struct bongo_status_state state) {
-    if (state.key_presses == widget->state.key_presses) {
+static void bongo_anim_stop(void) { lv_timer_pause(bongo_anim_timer); }
+
+static bool bongo_any_held(const struct status_state *state) {
+    return state->bongo_held[0] > 0 || state->bongo_held[1] > 0;
+}
+
+// Paw down while a key of its side is held, up once none is (after BONGO_TAP_MS)
+static void bongo_release(struct zmk_widget_status *widget) {
+    struct status_state *state = &widget->state;
+    int64_t left_ms = state->tap_until - k_uptime_get();
+
+    if (state->bongo_held[state->bongo_frame] > 0) {
         return;
     }
-    widget->state.key_presses = state.key_presses;
-    // Paw of the half the key is on (mirrored)
-    widget->state.bongo_frame = bongo_tap_frame(state.position);
-    widget->state.last_press = k_uptime_get();
-    if (widget->state.bongo_mode == BONGO_TAP) {
-        // Paw still down: show the paws-ready pose first, then tap again
-        widget->state.bongo_mode = BONGO_LIFT;
-        bongo_anim_start(BONGO_LIFT_MS);
-    } else if (widget->state.bongo_mode != BONGO_LIFT) {
-        widget->state.bongo_mode = BONGO_TAP;
-        bongo_anim_start(BONGO_TAP_MS);
+    if (state->bongo_held[!state->bongo_frame] > 0) {
+        state->bongo_frame = !state->bongo_frame; // the other paw is still pressing
+    } else if (left_ms > 0) {
+        bongo_anim_start(left_ms); // keep a short press visible
+        return;
+    } else {
+        state->bongo_mode = BONGO_PREP;
+        state->last_press = k_uptime_get(); // idle BONGO_IDLE_MS after the paw is lifted
     }
-    draw_top(widget->obj, widget->cbuf, &widget->state);
+    draw_top(widget->obj, widget->cbuf, state);
+}
+
+static void set_bongo_status(struct zmk_widget_status *widget, struct bongo_status_state state) {
+    struct status_state *s = &widget->state;
+    bool pressed = state.key_presses != s->key_presses;
+
+    s->key_presses = state.key_presses;
+    s->bongo_held[0] = state.held[0];
+    s->bongo_held[1] = state.held[1];
+
+    if (!pressed) {
+        if (s->bongo_mode == BONGO_TAP) {
+            bongo_release(widget);
+        }
+        return; // in lift mode, the lift timer checks the keys
+    }
+
+    int64_t now = k_uptime_get();
+    s->last_press = now;
+    s->tap_until = now + BONGO_TAP_MS;
+    if ((s->bongo_mode == BONGO_TAP || s->bongo_mode == BONGO_LIFT) &&
+        s->bongo_frame == state.last_side) {
+        // Same paw already down: lift it for a moment, then tap again
+        s->bongo_mode = BONGO_LIFT;
+        s->tap_until += BONGO_LIFT_MS;
+        bongo_anim_start(BONGO_LIFT_MS);
+    } else {
+        s->bongo_mode = BONGO_TAP;
+        bongo_anim_stop();
+    }
+    s->bongo_frame = state.last_side;
+    draw_top(widget->obj, widget->cbuf, s);
+    if (s->bongo_mode == BONGO_TAP && s->bongo_held[s->bongo_frame] == 0) {
+        bongo_anim_start(BONGO_TAP_MS); // already released (press and release in one update)
+    }
 }
 
 static void bongo_status_update_cb(struct bongo_status_state state) {
@@ -366,32 +410,39 @@ static void bongo_status_update_cb(struct bongo_status_state state) {
 
 // Key positions of both halves reach the central (left half) as position events
 static struct bongo_status_state bongo_status_get_state(const zmk_event_t *eh) {
-    static uint32_t key_presses, position;
-    const struct zmk_position_state_changed *ev = as_zmk_position_state_changed(eh);
-    if (ev != NULL && ev->state) {
-        key_presses++;
-        position = ev->position;
+    static struct bongo_status_state state;
+    // eh is NULL when the widget initializes
+    const struct zmk_position_state_changed *ev = eh ? as_zmk_position_state_changed(eh) : NULL;
+    if (ev != NULL) {
+        uint8_t side = bongo_tap_frame(ev->position);
+        if (ev->state) {
+            state.key_presses++;
+            state.last_side = side;
+            state.held[side]++;
+        } else if (state.held[side] > 0) {
+            state.held[side]--;
+        }
     }
-    return (struct bongo_status_state){.key_presses = key_presses, .position = position};
+    return state;
 }
 
 ZMK_DISPLAY_WIDGET_LISTENER(widget_bongo_status, struct bongo_status_state,
                             bongo_status_update_cb, bongo_status_get_state)
 ZMK_SUBSCRIPTION(widget_bongo_status, zmk_position_state_changed);
 
-// End of a tap (-> paws ready) or of the lift before a new tap (-> tap)
+// End of the lift before a new tap (-> tap), or of the minimum tap time
 static void bongo_anim_timer_cb(lv_timer_t *timer) {
     struct zmk_widget_status *widget = timer->user_data;
     lv_timer_pause(timer);
     if (widget->state.bongo_mode == BONGO_LIFT) {
         widget->state.bongo_mode = BONGO_TAP;
-        bongo_anim_start(BONGO_TAP_MS);
+        draw_top(widget->obj, widget->cbuf, &widget->state);
+        if (widget->state.bongo_held[widget->state.bongo_frame] == 0) {
+            bongo_anim_start(BONGO_TAP_MS); // already released: lift the paw after the tap
+        }
     } else if (widget->state.bongo_mode == BONGO_TAP) {
-        widget->state.bongo_mode = BONGO_PREP;
-    } else {
-        return;
+        bongo_release(widget);
     }
-    draw_top(widget->obj, widget->cbuf, &widget->state);
 }
 
 // Idle animation, and back to it a while after the last press
@@ -400,7 +451,7 @@ static void bongo_timer_cb(lv_timer_t *timer) {
     struct status_state *state = &widget->state;
 
     if (state->bongo_mode == BONGO_PREP) {
-        if (k_uptime_get() - state->last_press < BONGO_IDLE_MS) {
+        if (bongo_any_held(state) || k_uptime_get() - state->last_press < BONGO_IDLE_MS) {
             return;
         }
         state->bongo_mode = BONGO_IDLE;
