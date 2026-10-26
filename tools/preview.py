@@ -10,13 +10,14 @@ import sys
 from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from sprites import build_frames  # noqa: E402
+from sprites import build_frames, load_frames  # noqa: E402
 
 BG, FG, FRAME = (28, 30, 34), (205, 208, 212), (18, 22, 46)
 CYAN, DIM = (0, 240, 255), (125, 134, 168)
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 F18, F14, F11 = (ImageFont.truetype(FONT, s) for s in (16, 13, 11))
 SPRITES = build_frames()
+LOGOS = load_frames("logos.txt")
 MS = 50   # one preview frame = one cube frame (CUBE_FRAME_MS)
 
 
@@ -55,16 +56,26 @@ V = [(-1, -1, -1), (1, -1, -1), (1, 1, -1), (-1, 1, -1), (-1, -1, 1), (1, -1, 1)
 E = [(0, 1), (1, 2), (2, 3), (3, 0), (4, 5), (5, 6), (6, 7), (7, 4), (0, 4), (1, 5), (2, 6), (3, 7)]
 
 
+def paste(im, rows, x0, y0):
+    for y, row in enumerate(rows):
+        for x, c in enumerate(row):
+            if c == "#":
+                im.putpixel((x0 + x, y0 + y), FG)
+
+
 def right_screen(ay, ax):
+    # Same layout as peripheral_status.c: Arch rows 26-53, cube center row 90, atom rows 126-151
     im = Image.new("RGB", (68, 160), BG); d = ImageDraw.Draw(im)
     status_row(d)
+    paste(im, LOGOS["arch_logo"], 20, 26)
+    paste(im, LOGOS["atom_logo"], 21, 126)
     a, b = ay * math.pi / 18000, ax * math.pi / 18000
     pts = []
     for x, y, z in V:
         x1 = x * math.cos(a) + z * math.sin(a); z1 = -x * math.sin(a) + z * math.cos(a)
         y2 = y * math.cos(b) - z1 * math.sin(b); z2 = y * math.sin(b) + z1 * math.cos(b)
-        f = 88 / (z2 + 5)
-        pts.append((34 + round(x1 * f), 55 + 34 + round(y2 * f)))
+        f = 78 / (z2 + 5)
+        pts.append((34 + round(x1 * f), 90 + round(y2 * f)))
     for i, j in E:
         d.line([pts[i], pts[j]], fill=FG)
     return im
