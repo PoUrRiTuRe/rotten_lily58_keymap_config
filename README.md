@@ -8,7 +8,7 @@ latest run and flash each `.uf2` (double-tap reset → copy onto the USB drive).
 
 | Half | Top of the screen | Bottom of the screen |
 |---|---|---|
-| Left (central) | battery, output, **bongo cat** instead of the WPM graph: mirrored like facing you (left half = paw on the right of the screen); the paw goes down as soon as a key is pressed and stays down while it is held (Ctrl, Shift…); a second press on the same side lifts it for 40 ms first, so a double letter shows two taps; idle animation 1.5 s after the paw is lifted | Bluetooth profiles, layer name (unchanged) |
+| Left (central) | battery, output, **bongo cat** instead of the WPM graph: mirrored like facing you (left half = paw on the right of the screen); the paw goes down as soon as a key is pressed and stays down while that key (the last one pressed) is held (Ctrl, Shift…); a second press on the same side lifts it for 60 ms first, so a double letter or a hammered key shows every tap; idle animation 1.5 s after the paw is lifted | Bluetooth profiles, layer name (unchanged) |
 | Right (peripheral) | battery, link (unchanged), **Arch Linux logo** | **spinning wireframe cube**, then an **atom symbol in a ring**; same gap (~8 px) between every item |
 
 - Shield files: `boards/shields/nice_view_rotten/`; code: `src/nice_view_rotten/`

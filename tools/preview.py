@@ -83,62 +83,60 @@ def right_screen(ay, ax):
 
 # Demo: typing "discussion", then holding Ctrl, simulated with the firmware's
 # timings (same rules as status.c)
-TAP_MS, LIFT_MS, IDLE_MS, FRAME_MS = 100, 40, 1500, 200
+TAP_MS, LIFT_MS, IDLE_MS, FRAME_MS = 100, 60, 1500, 200
 HALF = {c: "left" for c in "qwertasdfgzxcvb"}
 HALF.update({c: "right" for c in "yuiophjklnm"})
 HALF["Ctrl"] = "left"
 WORD = "discussion"
-events, t = [], 1000   # (time, key, pressed)
+events, t = [], 1000   # (time, key, pressed): fast typing with overlapping keys
 for i, c in enumerate(WORD):
-    events += [(t, c, True), (t + 60, c, False)]
-    t += 100 if i + 1 < len(WORD) and WORD[i + 1] == c else 180   # double letters typed fast
+    events += [(t, c, True), (t + 140, c, False)]
+    t += 100 if i + 1 < len(WORD) and WORD[i + 1] == c else 170
 t += 600
 events += [(t, "Ctrl", True), (t + 1500, "Ctrl", False)]
-events.sort()
+events.sort(key=lambda e: e[0])
 
 
 def simulate(total_ms):
     side_of = lambda k: 1 if HALF[k] == "left" else 0   # mirror: left half = screen-right paw
-    mode, frame, held, last, until, timer = "idle", 0, [0, 0], -10**9, 0, None
+    mode, frame, last, timer = "idle", 0, -10**9, None
+    last_key, last_held, done = None, False, False
     out, queue, cap = [], list(events), "idle"
 
-    def release(now):
-        nonlocal mode, frame, timer, last
-        if held[frame]:
-            return
-        if held[1 - frame]:
-            frame = 1 - frame
-        elif until > now:
-            timer = until
-        else:
+    def tap(side, now):
+        nonlocal mode, frame, done, timer
+        mode, frame, done, timer = "tap", side, False, now + TAP_MS
+
+    def tap_done(now):
+        nonlocal mode, done, last
+        done = True
+        if not last_held:
             mode, last = "prep", now
 
     for now in range(0, total_ms, 10):
         while queue and queue[0][0] <= now:
             _, k, down = queue.pop(0)
-            side = side_of(k)
             if down:
-                held[side] += 1
-                last, until = now, now + TAP_MS
+                last_key, last_held, last = k, True, now
+                side = side_of(k)
                 cap = f"{k} ({HALF[k]} half)"
-                if mode in ("tap", "lift") and frame == side:
-                    mode, until, timer = "lift", until + LIFT_MS, now + LIFT_MS
+                if mode == "lift" and frame == side:
+                    pass
+                elif mode == "tap" and frame == side:
+                    mode, timer = "lift", now + LIFT_MS
                 else:
-                    mode, timer = "tap", None
-                frame = side
-            else:
-                held[side] = max(0, held[side] - 1)
-                if mode == "tap":
-                    release(now)
+                    tap(side, now)
+            elif k == last_key:
+                last_held = False
+                if mode == "tap" and done:
+                    tap_done(now)
         if timer is not None and now >= timer:
             timer = None
             if mode == "lift":
-                mode = "tap"
-                if not held[frame]:
-                    timer = now + TAP_MS
-            elif mode == "tap":
-                release(now)
-        if mode == "prep" and not any(held) and now - last >= IDLE_MS:
+                tap(frame, now)
+            elif mode == "tap" and not done:
+                tap_done(now)
+        if mode == "prep" and now - last >= IDLE_MS:
             mode, cap = "idle", "idle"
         if now % MS == 0:
             sprite = ("tap_left", "tap_right")[frame] if mode == "tap" else (

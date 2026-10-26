@@ -31,10 +31,10 @@ struct status_state {
     const char *layer_label;
     uint8_t bongo_mode;
     uint8_t bongo_frame;
-    uint8_t bongo_held[2];
+    bool bongo_last_held;
+    bool bongo_tap_done;
     uint32_t key_presses;
     int64_t last_press;
-    int64_t tap_until;
 #else
     bool connected;
     uint16_t cube_angle_y;
