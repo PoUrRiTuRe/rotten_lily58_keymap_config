@@ -5,11 +5,9 @@ Lit pixels use the foreground color, which the nice!view shows light on its
 dark background (like the stock texts): the cat looks like the classic OLED
 one, light body with dark eyes and mouth.
 
-The tap frames of the file are cleaned of their cartoon impact marks and
-renamed by the side of the screen their paw is on (tap1 = paw on the left of
-the screen, tap0 = paw on the right). Each also gets a "far" copy whose paw
-reaches FAR_REACH pixels further from the body (keys of the two top rows).
-Every frame is padded to HEIGHT rows.
+The tap frames are renamed by the side of the screen their paw is on
+(tap1 = paw on the left of the screen, tap0 = paw on the right). Every frame
+is padded to HEIGHT rows.
 
 Usage: python3 tools/sprites.py src/nice_view_rotten/sprites.c
 """
@@ -32,57 +30,15 @@ def load_frames():
 
 
 HEIGHT = 34
-# Per tap frame: new name, boxes (x0, x1, y0, y1) of the impact marks to
-# erase, box of the paw that is down and the direction it reaches out to
-TAPS = {
-    "tap1": ("tap_left", [(16, 25, 27, 31), (30, 36, 30, 31)], (14, 33, 18, 27), (-1, 1)),
-    "tap0": ("tap_right", [(53, 59, 2, 10), (58, 66, 6, 13), (56, 67, 17, 27)], (44, 57, 10, 18), (1, 1)),
-}
-FAR_REACH = 3
+TAPS = {"tap1": "tap_left", "tap0": "tap_right"}
 
 
 def pad(rows):
     return rows + ["." * len(rows[0])] * (HEIGHT - len(rows))
 
 
-def erase(rows, boxes):
-    grid = [list(r) for r in rows]
-    for x0, x1, y0, y1 in boxes:
-        for y in range(y0, y1 + 1):
-            for x in range(x0, x1 + 1):
-                grid[y][x] = "."
-    return ["".join(r) for r in grid]
-
-
-def reach(rows, box, direction):
-    """Smear the paw in box FAR_REACH pixels along direction: the arm gets
-    longer and the paw lands further from the body."""
-    x0, x1, y0, y1 = box
-    dx, dy = direction
-    grid = [list(r) for r in rows]
-    h, w = len(grid), len(grid[0])
-    for step in range(1, FAR_REACH + 1):
-        for y in range(y0, y1 + 1):
-            for x in range(x0, x1 + 1):
-                if rows[y][x] == "#":
-                    nx, ny = x + dx * step, y + dy * step
-                    if 0 <= nx < w and 0 <= ny < h:
-                        grid[ny][nx] = "#"
-    return ["".join(r) for r in grid]
-
-
 def build_frames():
-    frames = {}
-    for name, rows in load_frames().items():
-        rows = pad(rows)
-        if name in TAPS:
-            new_name, marks, paw, direction = TAPS[name]
-            rows = erase(rows, marks)
-            frames[new_name] = rows
-            frames[new_name + "_far"] = reach(rows, paw, direction)
-        else:
-            frames[name] = rows
-    return frames
+    return {TAPS.get(name, name): pad(rows) for name, rows in load_frames().items()}
 
 
 def to_c(name, rows):

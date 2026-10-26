@@ -70,23 +70,50 @@ def right_screen(ay, ax):
     return im
 
 
-# Demo: (sprite, duration in ms, caption)
-DEMO = [("idle%d" % (i % 5), 200, "idle") for i in range(10)]
-for half, paw in (("left", "right"), ("right", "left")):     # mirror
-    for top in (True, False):
-        cap = f"{half} half · {'top rows' if top else 'bottom rows'}"
-        sprite = "tap_%s%s" % (paw, "_far" if top else "")
-        for _ in range(4):
-            DEMO += [(sprite, 150, cap), ("prep0", 50, cap)]   # lift between presses
-DEMO += [("prep0", 900, "paws up"), ("idle0", 200, "idle")]
+# Demo: typing "discussion", simulated with the firmware's timings
+TAP_MS, LIFT_MS, IDLE_MS, FRAME_MS = 120, 80, 1500, 200
+HALF = {c: "left" for c in "qwertasdfgzxcvb"}
+HALF.update({c: "right" for c in "yuiophjklnm"})
+WORD = "discussion"
+presses, t = [], 1000
+for i, c in enumerate(WORD):
+    presses.append((t, c))
+    t += 100 if i + 1 < len(WORD) and WORD[i + 1] == c else 260   # double letters typed fast
+
+
+def simulate(total_ms):
+    """Same state machine as status.c, sampled every MS."""
+    mode, frame, last, anim_end, idle_tick = "idle", 0, -10**9, None, 0
+    out, queue = [], list(presses)
+    for now in range(0, total_ms, MS):
+        while queue and queue[0][0] <= now:
+            _, c = queue.pop(0)
+            frame = "tap_right" if HALF[c] == "left" else "tap_left"   # mirror
+            last = now
+            if mode == "tap":
+                mode, anim_end = "lift", now + LIFT_MS
+            elif mode != "lift":
+                mode, anim_end = "tap", now + TAP_MS
+            cap = f"'{c}' ({HALF[c]} half)"
+        if anim_end is not None and now >= anim_end:
+            if mode == "lift":
+                mode, anim_end = "tap", now + TAP_MS
+            elif mode == "tap":
+                mode, anim_end = "prep", None
+        if now - idle_tick >= FRAME_MS:
+            idle_tick = now
+            if mode == "prep" and now - last >= IDLE_MS:
+                mode, idle_frame = "idle", 0
+        sprite = frame if mode == "tap" else ("prep0" if mode in ("prep", "lift") else "idle%d" % (now // FRAME_MS % 5))
+        typed = WORD[:sum(1 for p, _ in presses if p <= now)]
+        out.append((sprite, f'typing "{typed}"' if typed and mode != "idle" else "idle"))
+    return out
+
 
 frames, ay, ax = [], 0, 2860
 LOOP = 36000 // 125   # cube frames until both angles are back to the start
-timeline = []
-for sprite, dur, cap in DEMO:
-    timeline += [(sprite, cap)] * (dur // MS)
 # The GIF lasts one full cube loop so it repeats without a jump
-timeline += [("idle%d" % (i // 4 % 5), "idle") for i in range(LOOP - len(timeline))]
+timeline = simulate(LOOP * MS)
 for k in range(LOOP):
     sprite, cap = timeline[k]
     o = Image.new("RGB", (68 * 2 + 30, 214), FRAME)
