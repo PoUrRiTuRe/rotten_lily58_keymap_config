@@ -1,8 +1,10 @@
 /*
  *
  * Based on ZMK's nice_view shield (central screen): the WPM graph is
- * replaced by the classic bongo cat: it taps the table on every key press,
- * raises its paws when typing stops, then goes back to its idle animation.
+ * replaced by the classic bongo cat: it taps the table on every key press
+ * (left paw for the left half, right paw for the right half, a bit lower for
+ * the two bottom rows and the thumbs), raises its paws when typing stops,
+ * then goes back to its idle animation.
  * Copyright (c) 2025 The ZMK Contributors
  * SPDX-License-Identifier: MIT
  *
@@ -21,7 +23,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zmk/events/battery_state_changed.h>
 #include <zmk/events/ble_active_profile_changed.h>
 #include <zmk/events/endpoint_changed.h>
-#include <zmk/events/keycode_state_changed.h>
+#include <zmk/events/position_state_changed.h>
 #include <zmk/events/layer_state_changed.h>
 #include <zmk/usb.h>
 #include <zmk/ble.h>
@@ -34,12 +36,18 @@ LV_IMG_DECLARE(bongo_idle2);
 LV_IMG_DECLARE(bongo_idle3);
 LV_IMG_DECLARE(bongo_idle4);
 LV_IMG_DECLARE(bongo_prep0);
-LV_IMG_DECLARE(bongo_tap0);
-LV_IMG_DECLARE(bongo_tap1);
+LV_IMG_DECLARE(bongo_tap_left);
+LV_IMG_DECLARE(bongo_tap_left_low);
+LV_IMG_DECLARE(bongo_tap_right);
+LV_IMG_DECLARE(bongo_tap_right_low);
 
 static const lv_img_dsc_t *const bongo_idle[] = {&bongo_idle0, &bongo_idle1, &bongo_idle2,
                                                  &bongo_idle3, &bongo_idle4};
-static const lv_img_dsc_t *const bongo_tap[] = {&bongo_tap0, &bongo_tap1};
+/* Indexed by bongo_frame in tap mode: BONGO_RIGHT | BONGO_LOW */
+static const lv_img_dsc_t *const bongo_tap[] = {&bongo_tap_left, &bongo_tap_left_low,
+                                                &bongo_tap_right, &bongo_tap_right_low};
+#define BONGO_LOW 1
+#define BONGO_RIGHT 2
 
 #define BONGO_FRAME_MS 200 /* idle animation speed */
 #define BONGO_PREP_MS 300  /* paws up this long after the last key press... */
@@ -65,7 +73,25 @@ struct layer_status_state {
 
 struct bongo_status_state {
     uint32_t key_presses;
+    uint32_t position;
 };
+
+/* Lily58 key positions (keymap order): rows 0-2 have 6 + 6 keys, row 3 has
+ * 7 + 7 (with the inner keys), then 4 + 4 thumb keys */
+static uint8_t bongo_tap_frame(uint32_t position) {
+    bool right, low;
+    if (position < 36) {
+        right = position % 12 >= 6;
+        low = position >= 24;
+    } else if (position < 50) {
+        right = position - 36 >= 7;
+        low = true;
+    } else {
+        right = position - 50 >= 4;
+        low = true;
+    }
+    return (right ? BONGO_RIGHT : 0) | (low ? BONGO_LOW : 0);
+}
 
 static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_state *state) {
     lv_obj_t *canvas = lv_obj_get_child(widget, 0);
@@ -103,7 +129,7 @@ static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
 
     lv_canvas_draw_text(canvas, 0, 0, CANVAS_SIZE, &label_dsc, output_text);
 
-    // Draw the bongo cat (68x32) where the WPM graph used to be
+    // Draw the bongo cat (68x34) where the WPM graph used to be
     const lv_img_dsc_t *frame;
     switch (state->bongo_mode) {
     case BONGO_TAP:
@@ -312,9 +338,8 @@ static void set_bongo_status(struct zmk_widget_status *widget, struct bongo_stat
         return;
     }
     widget->state.key_presses = state.key_presses;
-    // Alternate left / right paw on every press
-    widget->state.bongo_frame =
-        (widget->state.bongo_mode == BONGO_TAP) ? widget->state.bongo_frame + 1 : 0;
+    // Paw of the half the key is on, lower for the bottom rows
+    widget->state.bongo_frame = bongo_tap_frame(state.position);
     widget->state.bongo_mode = BONGO_TAP;
     widget->state.last_press = k_uptime_get();
 
@@ -326,18 +351,20 @@ static void bongo_status_update_cb(struct bongo_status_state state) {
     SYS_SLIST_FOR_EACH_CONTAINER(&widgets, widget, node) { set_bongo_status(widget, state); }
 }
 
+// Key positions of both halves reach the central (left half) as position events
 static struct bongo_status_state bongo_status_get_state(const zmk_event_t *eh) {
-    static uint32_t key_presses;
-    const struct zmk_keycode_state_changed *ev = as_zmk_keycode_state_changed(eh);
+    static uint32_t key_presses, position;
+    const struct zmk_position_state_changed *ev = as_zmk_position_state_changed(eh);
     if (ev != NULL && ev->state) {
         key_presses++;
+        position = ev->position;
     }
-    return (struct bongo_status_state){.key_presses = key_presses};
+    return (struct bongo_status_state){.key_presses = key_presses, .position = position};
 }
 
 ZMK_DISPLAY_WIDGET_LISTENER(widget_bongo_status, struct bongo_status_state,
                             bongo_status_update_cb, bongo_status_get_state)
-ZMK_SUBSCRIPTION(widget_bongo_status, zmk_keycode_state_changed);
+ZMK_SUBSCRIPTION(widget_bongo_status, zmk_position_state_changed);
 
 // Paws up shortly after the last key press, then the idle animation
 static void bongo_timer_cb(lv_timer_t *timer) {

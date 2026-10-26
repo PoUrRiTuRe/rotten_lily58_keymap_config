@@ -5,6 +5,11 @@ Lit pixels use the foreground color, which the nice!view shows light on its
 dark background (like the stock texts): the cat looks like the classic OLED
 one, light body with dark eyes and mouth.
 
+The tap frames of the file are renamed by paw (tap1 = left paw down,
+tap0 = right paw down) and each gets a "low" copy whose paw lands LOW_SHIFT
+pixels lower (keys of the two bottom rows and the thumbs). Every frame is
+padded to HEIGHT rows so the low paw fits.
+
 Usage: python3 tools/sprites.py src/nice_view_rotten/sprites.c
 """
 import os
@@ -22,6 +27,46 @@ def load_frames():
                 frames[name] = []
             elif line:
                 frames[name].append(line)
+    return frames
+
+
+HEIGHT = 34
+LOW_SHIFT = 2
+# Box (x0, x1, y0, y1) of the paw that is down in each tap frame
+PAWS = {"tap1": ("tap_left", (16, 25, 27, 31)), "tap0": ("tap_right", (57, 67, 19, 27))}
+
+
+def pad(rows):
+    return rows + ["." * len(rows[0])] * (HEIGHT - len(rows))
+
+
+def lower_paw(rows, box):
+    """Move the paw in box LOW_SHIFT rows down, stretching its top row (the
+    wrist) so it stays attached to the arm."""
+    x0, x1, y0, y1 = box
+    grid = [list(r) for r in rows]
+    paw = [r[x0:x1 + 1] for r in rows[y0:y1 + 1]]
+    for y in range(y0, y1 + 1):
+        grid[y][x0:x1 + 1] = "." * (x1 - x0 + 1)
+    stretched = [paw[0]] * LOW_SHIFT + paw
+    for i, part in enumerate(stretched):
+        y = y0 + i
+        for j, c in enumerate(part):
+            if c == "#":
+                grid[y][x0 + j] = "#"
+    return ["".join(r) for r in grid]
+
+
+def build_frames():
+    frames = {}
+    for name, rows in load_frames().items():
+        rows = pad(rows)
+        if name in PAWS:
+            new_name, box = PAWS[name]
+            frames[new_name] = rows
+            frames[new_name + "_low"] = lower_paw(rows, box)
+        else:
+            frames[name] = rows
     return frames
 
 
@@ -78,7 +123,8 @@ HEAD = '''/*
 #endif
 '''
 
-frames = load_frames()
-with open(sys.argv[1], "w", encoding="utf-8") as f:
-    f.write(HEAD + "".join(to_c(n, rows) for n, rows in frames.items()))
-print(f"{len(frames)} frames written to {sys.argv[1]}")
+if __name__ == "__main__":
+    frames = build_frames()
+    with open(sys.argv[1], "w", encoding="utf-8") as f:
+        f.write(HEAD + "".join(to_c(n, rows) for n, rows in frames.items()))
+    print(f"{len(frames)} frames written to {sys.argv[1]}")
