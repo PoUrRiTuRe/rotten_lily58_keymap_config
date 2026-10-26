@@ -29,12 +29,13 @@ struct status_state {
     bool profiles_bonded[NICEVIEW_PROFILE_COUNT];
     uint8_t layer_index;
     const char *layer_label;
+    uint8_t bongo_mode;
     uint8_t bongo_frame;
     uint32_t key_presses;
     int64_t last_press;
 #else
     bool connected;
-    uint8_t beat_step;
+    uint16_t cube_angle;
 #endif
 };
 

@@ -31,7 +31,7 @@ config ZMK_DISPLAY_STATUS_SCREEN_CUSTOM
     imply NICE_VIEW_ROTTEN_WIDGET
 
 config NICE_VIEW_ROTTEN_WIDGET
-    bool "Rotten nice!view status widget (bongo cat / rotten flesh / atom)"
+    bool "Rotten nice!view status widget (bongo cat / spinning cube)"
     select LV_FONT_MONTSERRAT_16
     select LV_USE_IMG
     select LV_USE_CANVAS

@@ -1,5 +1,5 @@
 # nice_view_rotten: custom nice!view screens (bongo cat on the left half,
-# rotten flesh + beating atom on the right half). Shield files are in
+# spinning cube on the right half). Shield files are in
 # boards/shields/nice_view_rotten, the code in src/nice_view_rotten.
 if(CONFIG_ZMK_DISPLAY AND CONFIG_NICE_VIEW_ROTTEN_WIDGET)
   zephyr_library()

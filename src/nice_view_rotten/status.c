@@ -1,7 +1,8 @@
 /*
  *
  * Based on ZMK's nice_view shield (central screen): the WPM graph is
- * replaced by a bongo cat that slaps the table on every key press.
+ * replaced by the classic bongo cat: it taps the table on every key press,
+ * raises its paws when typing stops, then goes back to its idle animation.
  * Copyright (c) 2025 The ZMK Contributors
  * SPDX-License-Identifier: MIT
  *
@@ -27,12 +28,24 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zmk/endpoints.h>
 #include <zmk/keymap.h>
 
-LV_IMG_DECLARE(bongo_idle);
-LV_IMG_DECLARE(bongo_left);
-LV_IMG_DECLARE(bongo_right);
+LV_IMG_DECLARE(bongo_idle0);
+LV_IMG_DECLARE(bongo_idle1);
+LV_IMG_DECLARE(bongo_idle2);
+LV_IMG_DECLARE(bongo_idle3);
+LV_IMG_DECLARE(bongo_idle4);
+LV_IMG_DECLARE(bongo_prep0);
+LV_IMG_DECLARE(bongo_tap0);
+LV_IMG_DECLARE(bongo_tap1);
 
-/* The cat goes back to idle when no key was pressed for this long */
-#define BONGO_IDLE_MS 350
+static const lv_img_dsc_t *const bongo_idle[] = {&bongo_idle0, &bongo_idle1, &bongo_idle2,
+                                                 &bongo_idle3, &bongo_idle4};
+static const lv_img_dsc_t *const bongo_tap[] = {&bongo_tap0, &bongo_tap1};
+
+#define BONGO_FRAME_MS 200 /* idle animation speed */
+#define BONGO_PREP_MS 300  /* paws up this long after the last key press... */
+#define BONGO_IDLE_MS 1200 /* ...and back to the idle animation after this */
+
+enum bongo_mode { BONGO_IDLE, BONGO_PREP, BONGO_TAP };
 
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
@@ -90,16 +103,22 @@ static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
 
     lv_canvas_draw_text(canvas, 0, 0, CANVAS_SIZE, &label_dsc, output_text);
 
-    // Draw the bongo cat (60x46) under the battery / output row
-    const lv_img_dsc_t *frame = &bongo_idle;
-    if (state->bongo_frame == 1) {
-        frame = &bongo_left;
-    } else if (state->bongo_frame == 2) {
-        frame = &bongo_right;
+    // Draw the bongo cat (68x32) where the WPM graph used to be
+    const lv_img_dsc_t *frame;
+    switch (state->bongo_mode) {
+    case BONGO_TAP:
+        frame = bongo_tap[state->bongo_frame % ARRAY_SIZE(bongo_tap)];
+        break;
+    case BONGO_PREP:
+        frame = &bongo_prep0;
+        break;
+    default:
+        frame = bongo_idle[state->bongo_frame % ARRAY_SIZE(bongo_idle)];
+        break;
     }
     lv_draw_img_dsc_t img_dsc;
     lv_draw_img_dsc_init(&img_dsc);
-    lv_canvas_draw_img(canvas, 4, 21, frame, &img_dsc);
+    lv_canvas_draw_img(canvas, 0, 26, frame, &img_dsc);
 
     // Rotate canvas
     rotate_canvas(canvas, cbuf);
@@ -294,7 +313,9 @@ static void set_bongo_status(struct zmk_widget_status *widget, struct bongo_stat
     }
     widget->state.key_presses = state.key_presses;
     // Alternate left / right paw on every press
-    widget->state.bongo_frame = (widget->state.bongo_frame == 1) ? 2 : 1;
+    widget->state.bongo_frame =
+        (widget->state.bongo_mode == BONGO_TAP) ? widget->state.bongo_frame + 1 : 0;
+    widget->state.bongo_mode = BONGO_TAP;
     widget->state.last_press = k_uptime_get();
 
     draw_top(widget->obj, widget->cbuf, &widget->state);
@@ -318,14 +339,27 @@ ZMK_DISPLAY_WIDGET_LISTENER(widget_bongo_status, struct bongo_status_state,
                             bongo_status_update_cb, bongo_status_get_state)
 ZMK_SUBSCRIPTION(widget_bongo_status, zmk_keycode_state_changed);
 
-// Back to idle (both paws up) shortly after the last key press
-static void bongo_idle_timer_cb(lv_timer_t *timer) {
+// Paws up shortly after the last key press, then the idle animation
+static void bongo_timer_cb(lv_timer_t *timer) {
     struct zmk_widget_status *widget = timer->user_data;
-    if (widget->state.bongo_frame != 0 &&
-        k_uptime_get() - widget->state.last_press > BONGO_IDLE_MS) {
-        widget->state.bongo_frame = 0;
-        draw_top(widget->obj, widget->cbuf, &widget->state);
+    struct status_state *state = &widget->state;
+    int64_t since_press = k_uptime_get() - state->last_press;
+
+    if (state->bongo_mode == BONGO_TAP) {
+        if (since_press < BONGO_PREP_MS) {
+            return;
+        }
+        state->bongo_mode = BONGO_PREP;
+    } else if (state->bongo_mode == BONGO_PREP) {
+        if (since_press < BONGO_IDLE_MS) {
+            return;
+        }
+        state->bongo_mode = BONGO_IDLE;
+        state->bongo_frame = 0;
+    } else {
+        state->bongo_frame = (state->bongo_frame + 1) % ARRAY_SIZE(bongo_idle);
     }
+    draw_top(widget->obj, widget->cbuf, state);
 }
 
 int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
@@ -346,7 +380,8 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     widget_output_status_init();
     widget_layer_status_init();
     widget_bongo_status_init();
-    lv_timer_create(bongo_idle_timer_cb, 100, widget);
+    widget->state.bongo_mode = BONGO_IDLE;
+    lv_timer_create(bongo_timer_cb, BONGO_FRAME_MS, widget);
 
     return 0;
 }

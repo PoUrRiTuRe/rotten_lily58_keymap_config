@@ -1,14 +1,15 @@
 /*
  *
- * Based on ZMK's nice_view shield (peripheral screen): the balloon / mountain
- * art is replaced by a rotten flesh under the battery and a beating atom
- * (two quick beats, then a rest) at the bottom of the screen.
+ * Based on ZMK's nice_view shield (peripheral screen): the battery and link
+ * status are unchanged, the balloon / mountain art is replaced by a black
+ * panel with a spinning wireframe cube.
  * Copyright (c) 2023 The ZMK Contributors
  * SPDX-License-Identifier: MIT
  *
  */
 
 #include <zephyr/kernel.h>
+#include <math.h>
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -25,13 +26,16 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #include "peripheral_status.h"
 
-LV_IMG_DECLARE(rotten_flesh);
+/* Cube animation: one frame every CUBE_FRAME_MS, CUBE_STEP tenths of a degree
+ * per frame (one turn about every 7 s) */
+#define CUBE_FRAME_MS 50
+#define CUBE_STEP 25
+#define CUBE_PANEL 92 /* height of the black panel under the status canvas */
 
-/* Heartbeat: atom size in percent, one step every BEAT_STEP_MS.
- * Two beats ("lub-dub"), then a rest: about 40 beats per minute. */
-#define BEAT_STEP_MS 120
-static const uint8_t beat_pattern[] = {100, 118, 104, 118, 100, 100,
-                                       100, 100, 100, 100, 100, 100};
+static const int8_t cube_vertices[8][3] = {{-1, -1, -1}, {1, -1, -1}, {1, 1, -1}, {-1, 1, -1},
+                                           {-1, -1, 1},  {1, -1, 1},  {1, 1, 1},  {-1, 1, 1}};
+static const uint8_t cube_edges[12][2] = {{0, 1}, {1, 2}, {2, 3}, {3, 0}, {4, 5}, {5, 6},
+                                          {6, 7}, {7, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
 
 static sys_slist_t widgets = SYS_SLIST_STATIC_INIT(&widgets);
 
@@ -57,51 +61,49 @@ static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
     lv_canvas_draw_text(canvas, 0, 0, CANVAS_SIZE, &label_dsc,
                         state->connected ? LV_SYMBOL_WIFI : LV_SYMBOL_CLOSE);
 
-    // Draw the rotten flesh (32x32) under the battery / connection row
-    lv_draw_img_dsc_t img_dsc;
-    lv_draw_img_dsc_init(&img_dsc);
-    lv_canvas_draw_img(canvas, 18, 28, &rotten_flesh, &img_dsc);
-
     // Rotate canvas
     rotate_canvas(canvas, cbuf);
 }
 
-// Atom / trefoil: three 60° blades around a dot, scaled to scale_pct percent
-static void draw_atom(lv_obj_t *widget, lv_color_t cbuf[], uint8_t scale_pct) {
-    lv_obj_t *canvas = lv_obj_get_child(widget, 1);
+// Wireframe cube, light lines on black, turned by state.cube_angle (tenths of a degree)
+static void draw_cube(struct zmk_widget_status *widget) {
+    lv_obj_t *canvas = widget->cube;
 
-    lv_draw_rect_dsc_t rect_black_dsc;
-    init_rect_dsc(&rect_black_dsc, LVGL_BACKGROUND);
-    lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_black_dsc);
+    lv_draw_rect_dsc_t rect_dsc;
+    init_rect_dsc(&rect_dsc, LVGL_FOREGROUND);
+    lv_canvas_draw_rect(canvas, 0, 0, CANVAS_SIZE, CANVAS_SIZE, &rect_dsc);
 
-    const lv_coord_t c = CANVAS_SIZE / 2;
-    const lv_coord_t r_out = 26 * scale_pct / 100;
-    const lv_coord_t r_in = 8 * scale_pct / 100;
-    const lv_coord_t r_dot = 5 * scale_pct / 100;
+    // Turn around Y, then around X at a different speed: the cube tumbles
+    float a = widget->state.cube_angle * 3.14159265f / 1800.0f;
+    float b = a * 0.6f + 0.5f;
+    float sa = sinf(a), ca = cosf(a), sb = sinf(b), cb = cosf(b);
 
-    lv_draw_arc_dsc_t blade_dsc;
-    init_arc_dsc(&blade_dsc, LVGL_FOREGROUND, r_out - r_in);
-    blade_dsc.rounded = 0;
-    // Angles go clockwise from 3 o'clock: two blades up, one down
-    lv_canvas_draw_arc(canvas, c, c, r_out, 180, 240, &blade_dsc);
-    lv_canvas_draw_arc(canvas, c, c, r_out, 300, 360, &blade_dsc);
-    lv_canvas_draw_arc(canvas, c, c, r_out, 60, 120, &blade_dsc);
+    lv_point_t points[8];
+    for (int i = 0; i < 8; i++) {
+        float x = cube_vertices[i][0], y = cube_vertices[i][1], z = cube_vertices[i][2];
+        float x1 = x * ca + z * sa;
+        float z1 = -x * sa + z * ca;
+        float y2 = y * cb - z1 * sb;
+        float z2 = y * sb + z1 * cb;
+        float f = 48.0f / (z2 + 4.0f); // perspective
+        points[i].x = CANVAS_SIZE / 2 + (lv_coord_t)lroundf(x1 * f);
+        points[i].y = CANVAS_SIZE / 2 + (lv_coord_t)lroundf(y2 * f);
+    }
 
-    lv_draw_arc_dsc_t dot_dsc;
-    init_arc_dsc(&dot_dsc, LVGL_FOREGROUND, r_dot);
-    lv_canvas_draw_arc(canvas, c, c, r_dot, 0, 360, &dot_dsc);
+    lv_draw_line_dsc_t line_dsc;
+    init_line_dsc(&line_dsc, LVGL_BACKGROUND, 1);
+    for (int i = 0; i < 12; i++) {
+        lv_point_t edge[2] = {points[cube_edges[i][0]], points[cube_edges[i][1]]};
+        lv_canvas_draw_line(canvas, edge, 2, &line_dsc);
+    }
 
-    rotate_canvas(canvas, cbuf);
+    rotate_canvas(canvas, widget->cbuf2);
 }
 
-static void beat_timer_cb(lv_timer_t *timer) {
+static void cube_timer_cb(lv_timer_t *timer) {
     struct zmk_widget_status *widget = timer->user_data;
-    uint8_t prev = beat_pattern[widget->state.beat_step];
-    widget->state.beat_step = (widget->state.beat_step + 1) % ARRAY_SIZE(beat_pattern);
-    uint8_t next = beat_pattern[widget->state.beat_step];
-    if (next != prev) {
-        draw_atom(widget->obj, widget->cbuf2, next);
-    }
+    widget->state.cube_angle = (widget->state.cube_angle + CUBE_STEP) % 3600;
+    draw_cube(widget);
 }
 
 static void set_battery_status(struct zmk_widget_status *widget,
@@ -163,17 +165,28 @@ int zmk_widget_status_init(struct zmk_widget_status *widget, lv_obj_t *parent) {
     lv_obj_t *top = lv_canvas_create(widget->obj);
     lv_obj_align(top, LV_ALIGN_TOP_RIGHT, 0, 0);
     lv_canvas_set_buffer(top, widget->cbuf, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
-    lv_obj_t *atom = lv_canvas_create(widget->obj);
-    lv_obj_align(atom, LV_ALIGN_TOP_LEFT, 6, 0);
-    lv_canvas_set_buffer(atom, widget->cbuf2, CANVAS_SIZE, CANVAS_SIZE, LV_IMG_CF_TRUE_COLOR);
+
+    // Black panel under the status canvas, with the cube canvas centered on it
+    lv_obj_t *panel = lv_obj_create(widget->obj);
+    lv_obj_set_size(panel, CUBE_PANEL, CANVAS_SIZE);
+    lv_obj_align(panel, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_set_style_bg_color(panel, LVGL_FOREGROUND, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(panel, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(panel, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(panel, 0, LV_PART_MAIN);
+    widget->cube = lv_canvas_create(widget->obj);
+    lv_obj_align(widget->cube, LV_ALIGN_TOP_LEFT, (CUBE_PANEL - CANVAS_SIZE) / 2, 0);
+    lv_canvas_set_buffer(widget->cube, widget->cbuf2, CANVAS_SIZE, CANVAS_SIZE,
+                         LV_IMG_CF_TRUE_COLOR);
 
     sys_slist_append(&widgets, &widget->node);
     widget_battery_status_init();
     widget_peripheral_status_init();
 
-    widget->state.beat_step = 0;
-    draw_atom(widget->obj, widget->cbuf2, beat_pattern[0]);
-    lv_timer_create(beat_timer_cb, BEAT_STEP_MS, widget);
+    widget->state.cube_angle = 0;
+    draw_cube(widget);
+    lv_timer_create(cube_timer_cb, CUBE_FRAME_MS, widget);
 
     return 0;
 }
