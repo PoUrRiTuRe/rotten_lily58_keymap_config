@@ -1,6 +1,7 @@
 # nice_view_rotten: custom nice!view screens (bongo cat on the left half,
-# spinning cube on the right half). Shield files are in
-# boards/shields/nice_view_rotten, the code in src/nice_view_rotten.
+# Arch logo, spinning cube and atom on the right half). Shield files are in
+# boards/shields/nice_view_rotten, the code in src/nice_view_rotten; the
+# &glasses behavior (dts/bindings) switches the cat's glasses.
 if(CONFIG_ZMK_DISPLAY AND CONFIG_NICE_VIEW_ROTTEN_WIDGET)
   zephyr_library()
   zephyr_library_include_directories(${APPLICATION_SOURCE_DIR}/include)
@@ -9,6 +10,8 @@ if(CONFIG_ZMK_DISPLAY AND CONFIG_NICE_VIEW_ROTTEN_WIDGET)
     src/nice_view_rotten/util.c
     src/nice_view_rotten/bolt.c
     src/nice_view_rotten/sprites.c
+    src/nice_view_rotten/glasses.c
+    src/behaviors/behavior_glasses.c
   )
   if(NOT CONFIG_ZMK_SPLIT OR CONFIG_ZMK_SPLIT_ROLE_CENTRAL)
     zephyr_library_sources(src/nice_view_rotten/status.c)

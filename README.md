@@ -8,7 +8,7 @@ latest run and flash each `.uf2` (double-tap reset → copy onto the USB drive).
 
 | Half | Top of the screen | Bottom of the screen |
 |---|---|---|
-| Left (central) | battery, output, **bongo cat** instead of the WPM graph: mirrored like facing you (left half = paw on the right of the screen); the paw goes down as soon as a key is pressed and stays down while that key (the last one pressed) is held (Ctrl, Shift…); a second press on the same side lifts it for 60 ms first, so a double letter or a hammered key shows every tap; idle animation 1.5 s after the paw is lifted | Bluetooth profiles, layer name (unchanged) |
+| Left (central) | battery, output, **bongo cat** with glasses and an UwU mouth (open "Kirby" mouth while tapping) instead of the WPM graph: mirrored like facing you (left half = paw on the right of the screen); the paw goes down as soon as a key is pressed and stays down while that key (the last one pressed) is held (Ctrl, Shift…); a second press on the same side lifts it for 60 ms first, so a double letter or a hammered key shows every tap; idle animation 1.5 s after the paw is lifted | Bluetooth profiles, layer name (unchanged) |
 | Right (peripheral) | battery, link (unchanged), **Arch Linux logo** | **spinning wireframe cube**, then an **atom symbol in a ring**; same gap (~8 px) between every item |
 
 - Shield files: `boards/shields/nice_view_rotten/`; code: `src/nice_view_rotten/`
@@ -22,5 +22,7 @@ latest run and flash each `.uf2` (double-tap reset → copy onto the USB drive).
 - Cube speed and size: `CUBE_FRAME_MS`, `CUBE_STEP_Y` / `CUBE_STEP_X` and `CUBE_SCALE` in
   `src/nice_view_rotten/peripheral_status.c`. The animations stop when the screen
   blanks (idle), like the rest of the display.
+- **Glasses easter egg**: press **Esc + both inner keys** (`[` and `]`) together to switch between the rectangular glasses (default) and thug glasses; the choice survives a restart. Nothing is sent to the computer. The combo and the `&glasses` behavior are at the top of `config/lily58.keymap`.
+- Glasses, mouths, cheeks and the impact marks of the left paw: `tools/bongo_face.py` (applied by `tools/sprites.py`).
 - Inverted colors: `CONFIG_NICE_VIEW_ROTTEN_INVERTED=y` in `config/lily58.conf`.
 - Back to the stock screens: replace `nice_view_rotten` by `nice_view` in `build.yaml`.

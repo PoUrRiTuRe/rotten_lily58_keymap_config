@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: MIT
+
+description: Switch the bongo cat glasses (rectangular / thug), kept across restarts
+
+compatible: "rotten,behavior-glasses"
+
+include: zero_param.yaml

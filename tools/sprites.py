@@ -8,12 +8,16 @@ one, light body with dark eyes and mouth.
 
 The tap frames are renamed by the side of the screen their paw is on
 (tap1 = paw on the left of the screen, tap0 = paw on the right). Every frame
-is padded to HEIGHT rows.
+is padded to HEIGHT rows and gets the glasses, mouth and cheeks of
+tools/bongo_face.py, once per glasses style.
 
 Usage: python3 tools/sprites.py src/nice_view_rotten/sprites.c
 """
 import os
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bongo_face  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -32,19 +36,26 @@ def load_frames(file="bongo_frames.txt"):
 
 HEIGHT = 34
 TAPS = {"tap1": "tap_left", "tap0": "tap_right"}
+STYLES = {"": "nerd", "thug_": "thug"}   # name prefix -> glasses style
 
 
 def pad(rows):
     return rows + ["." * len(rows[0])] * (HEIGHT - len(rows))
 
 
-def build_frames():
-    return {TAPS.get(name, name): pad(rows) for name, rows in load_frames().items()}
+def build_frames(style="nerd"):
+    """Frames with the glasses, mouth and cheeks of tools/bongo_face.py"""
+    raw = {name: pad(rows) for name, rows in load_frames().items()}
+    raw["tap1"] = bongo_face.mirrored_marks(raw["tap0"], raw["tap1"])
+    return {TAPS.get(name, name): bongo_face.face(rows, name in TAPS, style)
+            for name, rows in raw.items()}
 
 
 def build_images():
-    """Every image of sprites.c: bongo_* frames, then the logos"""
-    images = {"bongo_" + name: rows for name, rows in build_frames().items()}
+    """Every image of sprites.c: bongo_* frames for each style, then the logos"""
+    images = {}
+    for prefix, style in STYLES.items():
+        images.update({f"bongo_{prefix}{name}": rows for name, rows in build_frames(style).items()})
     images.update(load_frames("logos.txt"))
     return images
 
