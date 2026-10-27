@@ -33,19 +33,32 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #include <zmk/endpoints.h>
 #include <zmk/keymap.h>
 
-LV_IMG_DECLARE(bongo_idle0);
-LV_IMG_DECLARE(bongo_idle1);
-LV_IMG_DECLARE(bongo_idle2);
-LV_IMG_DECLARE(bongo_idle3);
-LV_IMG_DECLARE(bongo_idle4);
-LV_IMG_DECLARE(bongo_prep0);
-LV_IMG_DECLARE(bongo_tap_left);
-LV_IMG_DECLARE(bongo_tap_right);
+#include "glasses.h"
 
-static const lv_img_dsc_t *const bongo_idle[] = {&bongo_idle0, &bongo_idle1, &bongo_idle2,
-                                                 &bongo_idle3, &bongo_idle4};
-/* Indexed by bongo_frame in tap mode */
-static const lv_img_dsc_t *const bongo_tap[] = {&bongo_tap_left, &bongo_tap_right};
+#define BONGO_FRAMES(p)                                                                            \
+    LV_IMG_DECLARE(bongo_##p##idle0);                                                              \
+    LV_IMG_DECLARE(bongo_##p##idle1);                                                              \
+    LV_IMG_DECLARE(bongo_##p##idle2);                                                              \
+    LV_IMG_DECLARE(bongo_##p##idle3);                                                              \
+    LV_IMG_DECLARE(bongo_##p##idle4);                                                              \
+    LV_IMG_DECLARE(bongo_##p##prep0);                                                              \
+    LV_IMG_DECLARE(bongo_##p##tap_left);                                                           \
+    LV_IMG_DECLARE(bongo_##p##tap_right);
+BONGO_FRAMES()
+BONGO_FRAMES(thug_)
+
+/* Glasses style of the cat on screen, to redraw when &glasses switches it */
+static uint8_t drawn_style;
+
+/* Indexed by glasses style (glasses.h), then by frame */
+static const lv_img_dsc_t *const bongo_idle[2][5] = {
+    {&bongo_idle0, &bongo_idle1, &bongo_idle2, &bongo_idle3, &bongo_idle4},
+    {&bongo_thug_idle0, &bongo_thug_idle1, &bongo_thug_idle2, &bongo_thug_idle3,
+     &bongo_thug_idle4}};
+static const lv_img_dsc_t *const bongo_prep[2] = {&bongo_prep0, &bongo_thug_prep0};
+/* Then indexed by bongo_frame in tap mode */
+static const lv_img_dsc_t *const bongo_tap[2][2] = {{&bongo_tap_left, &bongo_tap_right},
+                                                    {&bongo_thug_tap_left, &bongo_thug_tap_right}};
 #define BONGO_SCREEN_LEFT 0
 #define BONGO_SCREEN_RIGHT 1
 
@@ -141,16 +154,18 @@ static void draw_top(lv_obj_t *widget, lv_color_t cbuf[], const struct status_st
 
     // Draw the bongo cat (68x34) where the WPM graph used to be
     const lv_img_dsc_t *frame;
+    uint8_t style = rotten_glasses_style();
+    drawn_style = style;
     switch (state->bongo_mode) {
     case BONGO_TAP:
-        frame = bongo_tap[state->bongo_frame % ARRAY_SIZE(bongo_tap)];
+        frame = bongo_tap[style][state->bongo_frame % ARRAY_SIZE(bongo_tap[0])];
         break;
     case BONGO_PREP:
     case BONGO_LIFT:
-        frame = &bongo_prep0;
+        frame = bongo_prep[style];
         break;
     default:
-        frame = bongo_idle[state->bongo_frame % ARRAY_SIZE(bongo_idle)];
+        frame = bongo_idle[style][state->bongo_frame % ARRAY_SIZE(bongo_idle[0])];
         break;
     }
     lv_draw_img_dsc_t img_dsc;
@@ -437,6 +452,10 @@ static void bongo_timer_cb(lv_timer_t *timer) {
     struct zmk_widget_status *widget = timer->user_data;
     struct status_state *state = &widget->state;
 
+    if (rotten_glasses_style() != drawn_style) {
+        draw_top(widget->obj, widget->cbuf, state); // &glasses was pressed
+        return;
+    }
     if (state->bongo_mode == BONGO_PREP) {
         if (k_uptime_get() - state->last_press < BONGO_IDLE_MS) {
             return;
@@ -444,7 +463,7 @@ static void bongo_timer_cb(lv_timer_t *timer) {
         state->bongo_mode = BONGO_IDLE;
         state->bongo_frame = 0;
     } else if (state->bongo_mode == BONGO_IDLE) {
-        state->bongo_frame = (state->bongo_frame + 1) % ARRAY_SIZE(bongo_idle);
+        state->bongo_frame = (state->bongo_frame + 1) % ARRAY_SIZE(bongo_idle[0]);
     } else {
         return; // tap or lift: handled by the animation timer
     }

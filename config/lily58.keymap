@@ -9,6 +9,27 @@
 #include <dt-bindings/zmk/keys.h>
 
 / {
+    behaviors {
+        // Switches the bongo cat glasses (rectangular <-> thug) on the left
+        // screen; nothing is sent to the computer. Name must stay <= 8 chars.
+        glasses: glasses {
+            compatible = "rotten,behavior-glasses";
+            #binding-cells = <0>;
+            display-name = "Glasses";
+        };
+    };
+
+    combos {
+        compatible = "zmk,combos";
+
+        // Esc + both inner keys ("[" and "]") together: glasses easter egg
+        combo_glasses {
+            timeout-ms = <80>;
+            key-positions = <0 42 43>;
+            bindings = <&glasses>;
+        };
+    };
+
     keymap {
         compatible = "zmk,keymap";
 
